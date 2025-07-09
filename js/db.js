@@ -1,24 +1,25 @@
-// db.js adaptado para SheetDB com tudo na mesma aba e campos de tipo
-
-const SHEETDB_URL = "https://sheetdb.io/api/v1/9wz82m9wgjyox";
+const SHEETDB_URL = "https://script.google.com/macros/s/AKfycbztbW0fyoQZBuOHlZO_Oh4NGDt6fIPjerWd_iY5VRVYwA-uNrYcDuZQjDrhiSYlhvZH/exec";
 
 function initDB() {
-  console.log("initDB: inicialização simbólica (SheetDB não requer setup)");
+  console.log("initDB: inicialização simbólica (Google Apps Script API)");
   return Promise.resolve();
 }
 
+function generateId() {
+  return Date.now().toString() + Math.floor(Math.random() * 1000).toString();
+}
+
 /* ---------- TRANSAÇÕES ---------- */
+
 function getAllTransactions() {
   console.log("Buscando todas as transações...");
-  return fetch(`${SHEETDB_URL}`)
+  return fetch(SHEETDB_URL)
     .then(res => {
-      console.log("Status da resposta das transações:", res.status);
       if (!res.ok) throw new Error("Erro ao buscar transações");
       return res.json();
     })
     .then(data => {
       const transacoes = data.filter(item => item.tipo === "transacao");
-      console.log("Transações recebidas:", transacoes);
       return transacoes.map(tx => ({
         ...tx,
         id: Number(tx.id),
@@ -30,13 +31,13 @@ function getAllTransactions() {
 
 function addTransaction(item) {
   const dataFormatada = new Date(item.data).toISOString().split("T")[0];
-
   const valorConvertido = typeof item.valor === "string"
     ? parseFloat(item.valor.replace(",", "."))
     : item.valor;
 
   const tx = {
     ...item,
+    id: generateId(),
     tipo: "transacao",
     data: dataFormatada,
     valor: valorConvertido
@@ -44,45 +45,50 @@ function addTransaction(item) {
 
   return fetch(SHEETDB_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: tx })
+    headers: { "Content-Type": "text/plain" }, // evita preflight
+    body: JSON.stringify({ action: "add", data: tx })
   }).then(res => {
     if (!res.ok) throw new Error("Erro ao adicionar transação.");
+    return res.json();
   });
 }
 
-function deleteTransaction(id) {
-  return fetch(`${SHEETDB_URL}/id/${id}`, {
-    method: "DELETE"
-  })
-    .then(res => {
-      if (!res.ok) throw new Error("Erro ao deletar transação.");
-    });
-}
 function updateTransaction(id, item) {
   const dataFormatada = new Date(item.data).toISOString().split("T")[0];
-
   const valorConvertido = typeof item.valor === "string"
     ? parseFloat(item.valor.replace(",", "."))
     : item.valor;
 
   const tx = {
     ...item,
+    id,
     data: dataFormatada,
     valor: valorConvertido
   };
 
-  return fetch(`${SHEETDB_URL}/id/${id}`, {
-    method: "PATCH",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: tx })
+  return fetch(SHEETDB_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ action: "update", data: tx })
   }).then(res => {
     if (!res.ok) throw new Error("Erro ao atualizar transação.");
+    return res.json();
   });
 }
 
+function deleteTransaction(id) {
+  return fetch(SHEETDB_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ action: "delete", data: { id } })
+  }).then(res => {
+    if (!res.ok) throw new Error("Erro ao deletar transação.");
+    return res.json();
+  });
+}
 
 /* ---------- CATEGORIAS ---------- */
+
 function getAllCategorias() {
   return fetch(SHEETDB_URL)
     .then(res => res.json())
@@ -93,42 +99,43 @@ function getAllCategorias() {
 }
 
 function addCategoria(nome) {
+  const cat = {
+    id: generateId(),
+    nome,
+    tipo: "categoria"
+  };
   return fetch(SHEETDB_URL, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ data: { nome, tipo: "categoria" } })
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ action: "add", data: cat })
   }).then(res => {
     if (!res.ok) throw new Error("Erro ao adicionar categoria.");
+    return res.json();
   });
 }
 
 /* ---------- BANCOS ---------- */
+
 function getAllBancos() {
-  console.log("Buscando todos os bancos...");
   return fetch(SHEETDB_URL)
     .then(res => {
-      console.log("Status da resposta dos bancos:", res.status);
       if (!res.ok) throw new Error("Erro ao buscar bancos");
       return res.json();
     })
     .then(data => {
       const bancos = data.filter(item => item.tipo === "banco");
-      console.log("Bancos recebidos:", bancos);
       return [...new Set(bancos.map(b => b.nome))];
     });
 }
 
 function getAllBanks() {
-  console.log("Buscando todos os bancos...");
   return fetch(SHEETDB_URL)
     .then(res => {
-      console.log("Status da resposta dos bancos:", res.status);
       if (!res.ok) throw new Error("Erro ao buscar bancos");
       return res.json();
     })
     .then(data => {
       const bancos = data.filter(item => item.tipo === "banco");
-      console.log("Bancos recebidos:", bancos);
       return bancos.map(b => ({
         nome: b.nome,
         saldoInicial: parseFloat(b.saldoInicial) || 0
@@ -142,47 +149,56 @@ function addOrUpdateBank(bank) {
     saldoInicial: String(Number(bank.saldoInicial) || 0),
     tipo: "banco"
   };
-  console.log("Payload para salvar banco:", payloadBank);
 
-  return fetch(`${SHEETDB_URL}/search?nome=${encodeURIComponent(bank.nome)}&tipo=banco`)
-    .then(res => res.json())
-    .then(data => {
-      if (data.length > 0) {
-        return fetch(`${SHEETDB_URL}/id/${data[0].id}`, {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: payloadBank })
-        }).then(res => {
-          if (!res.ok) throw new Error("Erro ao atualizar banco");
-        });
-      } else {
-        return fetch(SHEETDB_URL, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ data: payloadBank })
-        }).then(res => {
-          if (!res.ok) throw new Error("Erro ao criar banco");
-        });
-      }
-    });
+  return updateBank(payloadBank)
+    .catch(() => addBank(payloadBank));
+}
+
+function updateBank(bank) {
+  return fetch(SHEETDB_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ action: "update", data: bank })
+  }).then(res => {
+    if (!res.ok) throw new Error("Erro ao atualizar banco");
+    return res.json();
+  });
+}
+
+function addBank(bank) {
+  const b = {
+    ...bank,
+    id: generateId()
+  };
+  return fetch(SHEETDB_URL, {
+    method: "POST",
+    headers: { "Content-Type": "text/plain" },
+    body: JSON.stringify({ action: "add", data: b })
+  }).then(res => {
+    if (!res.ok) throw new Error("Erro ao criar banco");
+    return res.json();
+  });
 }
 
 function getBank(nome) {
-  return fetch(`${SHEETDB_URL}/search?nome=${encodeURIComponent(nome)}&tipo=banco`)
+  return fetch(SHEETDB_URL)
     .then(res => res.json())
-    .then(data => data[0] || null);
+    .then(data => {
+      const bancos = data.filter(item => item.tipo === "banco" && item.nome === nome);
+      return bancos[0] || null;
+    });
 }
 
 function deleteBank(nome) {
-  return fetch(`${SHEETDB_URL}/search?nome=${encodeURIComponent(nome)}&tipo=banco`)
-    .then(res => res.json())
-    .then(data => {
-      if (data.length === 0) throw new Error("Banco não encontrado");
-      return fetch(`${SHEETDB_URL}/id/${data[0].id}`, {
-        method: "DELETE"
-      });
-    })
-    .then(res => {
-      if (!res.ok) throw new Error("Erro ao deletar banco.");
+  return getBank(nome).then(bank => {
+    if (!bank) throw new Error("Banco não encontrado");
+    return fetch(SHEETDB_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain" },
+      body: JSON.stringify({ action: "delete", data: { id: bank.id } })
+    }).then(res => {
+      if (!res.ok) throw new Error("Erro ao deletar banco");
+      return res.json();
     });
+  });
 }
