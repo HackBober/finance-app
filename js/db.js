@@ -16,23 +16,19 @@ function fetchWithCache(key, fetchFunc, maxAgeMs = 120000) { // cache 2 minutos
   const cacheTime = localStorage.getItem(key + "_time");
   
   if (cached && cacheTime && now - parseInt(cacheTime) < maxAgeMs) {
-    console.log(`Usando cache para ${key}`);
     const data = JSON.parse(cached);
     // Retorna um objeto que já tem dados do cache e uma promise que atualiza em segundo plano
     fetchFunc().then(freshData => {
       const freshJson = JSON.stringify(freshData);
       if (freshJson !== cached) {
-        console.log(`Atualizando cache para ${key}`);
         localStorage.setItem(key, freshJson);
         localStorage.setItem(key + "_time", now.toString());
         // Opcional: disparar evento ou callback para avisar que tem dados novos
       } else {
-        console.log(`Dados de ${key} não mudaram`);
       }
     }).catch(e => console.warn(`Erro atualizando cache ${key}:`, e));
     return Promise.resolve(data);
   } else {
-    console.log(`Buscando do servidor: ${key}`);
     return fetchFunc().then(data => {
       localStorage.setItem(key, JSON.stringify(data));
       localStorage.setItem(key + "_time", now.toString());
@@ -45,7 +41,6 @@ function fetchWithCache(key, fetchFunc, maxAgeMs = 120000) { // cache 2 minutos
 
 function getAllTransactions() {
   return fetchWithCache("transacoesCache", () => {
-    console.log("Buscando todas as transações no servidor...");
     return fetch(SHEETDB_URL)
       .then(res => {
         if (!res.ok) throw new Error("Erro ao buscar transações");
@@ -116,7 +111,6 @@ function updateTransaction(id, item) {
 }
 
 function deleteTransaction(id) {
-  console.log("Enviando requisição DELETE para id:", id);
   return fetch(SHEETDB_URL, {
     method: "POST",
     headers: { "Content-Type": "text/plain" },
